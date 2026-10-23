@@ -28,6 +28,7 @@ class AuthLogin(BaseModel):
 
 class RecipientIn(BaseModel):
     name: str = Field(min_length=2, max_length=120)
+    organization_type: Literal["ngo", "shelter", "community_kitchen"] = "ngo"
     contact: str = Field(min_length=5, max_length=60)
     address: str = Field(min_length=4, max_length=240)
     latitude: float = Field(ge=-90, le=90)
@@ -38,6 +39,10 @@ class RecipientIn(BaseModel):
     hours: str = Field(min_length=2, max_length=120)
     evidence: str = Field(min_length=10, max_length=4000)
     reference_id: str = Field(default="", max_length=120)
+    darpan_id: str = Field(default="", max_length=32)
+    pan_number: str = Field(default="", max_length=20)
+    fcra_or_80g: str = Field(default="", max_length=120)
+    daily_meal_capacity: int | None = Field(default=None, ge=0, le=100000)
 
 
 class DonationIn(BaseModel):

@@ -40,9 +40,29 @@ def donations(status: str | None = None, user: dict = Depends(current_user)):
                 recipient_allocated = db.execute("SELECT COALESCE(SUM(quantity_kg),0) FROM portions WHERE recipient_id=? AND status IN ('offered','accepted','picked_up')", (recipient["id"],)).fetchone()[0]
                 for item in items:
                     item["portions"] = [p for p in item["portions"] if p["recipient_id"] == recipient["id"]]
-                items = [item for item in items if any(p["recipient_id"] == recipient["id"] for p in item["portions"]) or distance_km(
+                current_time = now()
+                def is_current_listing(item):
+                    if item["status"] not in ("open", "at_risk", "matched"):
+                        return False
+                    try:
+                        deadline = datetime.fromisoformat(item["expires_at"])
+                        if deadline.tzinfo is None:
+                            deadline = deadline.replace(tzinfo=current_time.tzinfo)
+                        if deadline <= current_time:
+                            return False
+                    except (TypeError, ValueError):
+                        return False
+                    delivered = item.get("delivered_quantity_kg", 0)
+                    if delivered >= item["quantity_kg"] - .01:
+                        return False
+                    has_active_handover = any(p["status"] in ("offered", "accepted", "picked_up") for p in item["portions"])
+                    return item["available_quantity_kg"] > .01 or has_active_handover
+
+                # Recipient accounts browse current, requestable listings and their active handovers.
+                # Completed and expired donation history remains available to donors and admins.
+                items = [item for item in items if is_current_listing(item) and (any(p["recipient_id"] == recipient["id"] for p in item["portions"]) or distance_km(
                     item["lat"], item["lon"], recipient["lat"], recipient["lon"]
-                ) <= MAX_COLLECTION_RADIUS_KM]
+                ) <= MAX_COLLECTION_RADIUS_KM)]
             else:
                 items = []
             for item in items:

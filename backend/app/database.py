@@ -67,6 +67,10 @@ class CursorAdapter:
     def __init__(self, cursor):
         self.cursor = cursor
 
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+
     @staticmethod
     def adapt(row):
         return CompatRow(row) if row is not None and not isinstance(row, CompatRow) else row
@@ -175,7 +179,9 @@ def init_db() -> None:
           storage TEXT NOT NULL, hours TEXT NOT NULL,
           verification_status TEXT NOT NULL DEFAULT 'pending',
           evidence TEXT NOT NULL DEFAULT '', reference_id TEXT NOT NULL DEFAULT '',
-          created_at TEXT NOT NULL, user_id TEXT, verification_report TEXT NOT NULL DEFAULT '{}'
+          created_at TEXT NOT NULL, user_id TEXT, verification_report TEXT NOT NULL DEFAULT '{}',
+          organization_type TEXT NOT NULL DEFAULT 'ngo', darpan_id TEXT NOT NULL DEFAULT '', pan_encrypted BLOB,
+          fcra_or_80g TEXT NOT NULL DEFAULT '', daily_meal_capacity INTEGER
         );
         CREATE TABLE IF NOT EXISTS donations (
           id TEXT PRIMARY KEY, donor_name TEXT NOT NULL, food_name TEXT NOT NULL,
@@ -201,7 +207,8 @@ def init_db() -> None:
           id TEXT PRIMARY KEY, recipient_id TEXT NOT NULL REFERENCES recipients(id),
           owner_id TEXT NOT NULL REFERENCES users(id), filename TEXT NOT NULL,
           content_type TEXT NOT NULL, encrypted_data BLOB NOT NULL, sha256 TEXT NOT NULL,
-          extracted_text TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+          extracted_text TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+          extraction_method TEXT NOT NULL DEFAULT '', extraction_error TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS notifications (
           id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id),
@@ -217,11 +224,15 @@ def init_db() -> None:
         """
         if getattr(db, "is_postgres", False):
             schema = schema.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
-            schema = schema.replace(" REAL ", " DOUBLE PRECISION ").replace(" BLOB ", " BYTEA ")
+            schema = schema.replace(" REAL ", " DOUBLE PRECISION ").replace(" BLOB,", " BYTEA,").replace(" BLOB ", " BYTEA ")
         db.executescript(schema)
         if getattr(db, "is_postgres", False):
-            db.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
-            db.execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('donor','recipient','admin','volunteer'))")
+            role_constraint = db.execute(
+                "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='users'::regclass AND conname='users_role_check'"
+            ).fetchone()
+            if not role_constraint or "volunteer" not in role_constraint["definition"]:
+                db.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
+                db.execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('donor','recipient','admin','volunteer'))")
         else:
             role_schema = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()["sql"]
             if "'volunteer'" not in role_schema:
@@ -234,13 +245,25 @@ def init_db() -> None:
         for table, column, declaration in (
             ("recipients", "user_id", "TEXT"),
             ("recipients", "verification_report", "TEXT NOT NULL DEFAULT '{}'"),
+            ("recipients", "organization_type", "TEXT NOT NULL DEFAULT 'ngo'"),
+            ("recipients", "darpan_id", "TEXT NOT NULL DEFAULT ''"),
+            ("recipients", "pan_encrypted", "BLOB"),
+            ("recipients", "fcra_or_80g", "TEXT NOT NULL DEFAULT ''"),
+            ("recipients", "daily_meal_capacity", "INTEGER"),
+            ("documents", "extraction_method", "TEXT NOT NULL DEFAULT ''"),
+            ("documents", "extraction_error", "TEXT NOT NULL DEFAULT ''"),
             ("donations", "donor_id", "TEXT"),
             ("donations", "delivery_code", "TEXT"),
             ("portions", "pickup_confirmed_by", "TEXT"),
         ):
             if getattr(db, "is_postgres", False):
-                declaration = declaration.replace("TEXT", "TEXT")
-                db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {declaration}")
+                declaration = declaration.replace("BLOB", "BYTEA")
+                exists = db.execute(
+                    "SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=? AND column_name=?",
+                    (table, column),
+                ).fetchone()
+                if not exists:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
             else:
                 columns = {r["name"] for r in db.execute(f"PRAGMA table_info({table})")}
                 if column not in columns:

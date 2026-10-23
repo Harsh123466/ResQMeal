@@ -67,7 +67,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("ANNSETU_FRONTEND_URL", "http://localhost:5173"), "http://127.0.0.1:5173"],
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
