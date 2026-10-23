@@ -8,11 +8,7 @@ Use Python 3.10+ and Node.js 20.19+ (or 22.12+). Configure the administrator bef
 
 ```powershell
 cd backend
-$env:ANNSETU_ADMIN_EMAIL = "admin@example.org"
-$env:ANNSETU_ADMIN_PASSWORD = "use-a-unique-password-at-least-10-characters"
 # Set and keep a private signing key in deployment; the local development key is generated automatically.
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
