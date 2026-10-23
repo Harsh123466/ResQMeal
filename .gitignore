@@ -1,0 +1,32 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local Python environments and packaging output
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Frontend dependencies and build output
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Local secrets and environment configuration
+.env
+.env.*
+!.env.example
+!**/.env.example
+backend/.annsetu_secret
+backend/.annsetu_docs.key
+
+# Local databases, uploads, and runtime logs
+*.db
+*.sqlite
+*.sqlite3
+uploads/
+*.log
