@@ -58,11 +58,16 @@ def donations(status: str | None = None, user: dict = Depends(current_user)):
                     has_active_handover = any(p["status"] in ("offered", "accepted", "picked_up") for p in item["portions"])
                     return item["available_quantity_kg"] > .01 or has_active_handover
 
-                # Recipient accounts browse current, requestable listings and their active handovers.
-                # Completed and expired donation history remains available to donors and admins.
-                items = [item for item in items if is_current_listing(item) and (any(p["recipient_id"] == recipient["id"] for p in item["portions"]) or distance_km(
-                    item["lat"], item["lon"], recipient["lat"], recipient["lon"]
-                ) <= MAX_COLLECTION_RADIUS_KM)]
+                # Keep current nearby listings available for browsing, and always
+                # include this organization's own allocations for request history.
+                # The recipient response contains only its own portions (filtered
+                # above), so completed or expired donations do not expose another
+                # organization's handover details.
+                items = [item for item in items if item["portions"] or (
+                    is_current_listing(item) and distance_km(
+                        item["lat"], item["lon"], recipient["lat"], recipient["lon"]
+                    ) <= MAX_COLLECTION_RADIUS_KM
+                )]
             else:
                 items = []
             for item in items:

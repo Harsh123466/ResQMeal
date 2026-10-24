@@ -172,14 +172,30 @@ class AnnSetuWorkflowTests(unittest.TestCase):
             db.execute("UPDATE recipients SET verification_status='approved'")
         created = self.create_donation(quantity=8).json()
         recipient_user, profile = self.recipients[0]
-        request = self.client.post(f"/api/donations/{created['id']}/request", headers=recipient_user)
+        request = self.client.post(f"/api/donations/{created['id']}/request", headers=recipient_user, json={"quantity_kg": 8})
         self.assertEqual(request.status_code, 201)
         portion = next(p for p in request.json()["portions"] if p["recipient_id"] == profile["id"])
         self.assertEqual(portion["status"], "offered")
-        self.assertEqual(self.client.post(f"/api/portions/{portion['id']}/accept", headers=recipient_user).status_code, 200)
+        accepted = self.client.post(f"/api/portions/{portion['id']}/accept", headers=recipient_user)
+        self.assertEqual(accepted.status_code, 200)
         notice_items = self.client.get("/api/notifications", headers=self.donor).json()["items"]
         self.assertTrue(any(n["kind"] == "recipient_request" for n in notice_items))
-        self.assertEqual(self.client.post(f"/api/donations/{created['id']}/request", headers=self.donor).status_code, 403)
+        self.assertEqual(self.client.post(f"/api/donations/{created['id']}/request", headers=self.donor,
+                                          json={"quantity_kg": 1}).status_code, 403)
+        code = self.client.get(f"/api/donations/{created['id']}/delivery-code", headers=recipient_user).json()["code"]
+        pickup = self.client.post(f"/api/portions/{portion['id']}/confirm", headers=self.donor,
+                                  json={"step": "pickup", "code": code})
+        self.assertEqual(pickup.status_code, 200, pickup.text)
+        receipt = self.client.post(f"/api/portions/{portion['id']}/confirm", headers=recipient_user,
+                                   json={"step": "receipt", "code": ""})
+        self.assertEqual(receipt.status_code, 200, receipt.text)
+        self.assertEqual(receipt.json()["status"], "completed")
+
+        history = self.client.get("/api/donations", headers=recipient_user)
+        self.assertEqual(history.status_code, 200, history.text)
+        completed = next(item for item in history.json() if item["id"] == created["id"])
+        self.assertEqual(completed["portions"][0]["status"], "received")
+        self.assertFalse(completed["request_eligibility"]["eligible"])
 
     def test_cancellation_rescue_and_notifications(self):
         created = self.create_donation(quantity=12).json()
